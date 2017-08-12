@@ -1,7 +1,6 @@
 ---
 title: "Minimal Vulkan Sample: Clearing of Backbuffer"
-date: 2017-08-06T19:46:00+03:00
-draft: true
+date: 2017-08-12T12:00:00+03:00
 ---
 
 For a long time I wanted to start learning new low-level API like DirectX and Vulkan. And I procrastinated, as my current job is barely related to rendering and there is little interest in high performance code and high performance rendering specifically. Recently I decided instead of just writing code myself to document my learning exercises in hope that they will be useful to other people. As a side effect I hope it will help with my motivation.

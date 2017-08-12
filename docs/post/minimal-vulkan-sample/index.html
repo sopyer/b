@@ -1,0 +1,642 @@
+
+  <!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+
+    <title>Mykhailo&#39;s blog</title>
+    <meta name="author" content="Mykhailo Parfeniuk">
+    <meta name="description" content="">
+    <meta name="generator" content="Hugo 0.25.1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <link rel="shortcut icon" href="img/favicon.ico">
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/sp-minimal.css">
+    
+      <link rel="stylesheet" href="css/sp-minimal-simple.css">
+    
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.3/styles/default.min.css">
+</head>
+
+
+  <body><div class="wrapper">
+  <header class="text-center">
+   <img src="img/logo.png" class="img-circle s200"> 
+
+  
+    <h1 class="border-bottom add-padding-bottom"><a href="">Mykhailo&rsquo;s blog</a></h1>
+  
+	
+  
+    <h2 class="text-right add-padding-right">Blog about graphics, programming, optimizations</h2>
+  
+
+  
+    <div class="text-right add-padding-right">
+
+      
+
+      
+      <a href="https://github.com/sopyer" target="_blank"><i class="fa fa-github-square fa-2x"></i></a>
+      
+
+      
+      <a href="https://twitter.com/sopyer" target="_blank"><i class="fa fa-twitter-square fa-2x"></i></a>
+      
+
+      
+      <a href="https://www.linkedin.com/in/mykhailo-parfeniuk-833aa57" target="_blank"><i class="fa fa-linkedin-square fa-2x"></i></a>
+      
+
+      <a href="index.xml" rel="me"><i class="fa fa-rss-square fa-2x"></i></a> 
+
+    </div>
+
+</header>
+
+
+
+
+  <section>
+    <p class="remove-margin-bottom">
+      <time datetime="12 August 2017">12 August 2017</time>
+    </p>
+
+    <h1>Minimal Vulkan Sample: Clearing of Backbuffer</h1>
+    
+
+<p>For a long time I wanted to start learning new low-level API like DirectX and Vulkan. And I procrastinated, as my current job is barely related to rendering and there is little interest in high performance code and high performance rendering specifically. Recently I decided instead of just writing code myself to document my learning exercises in hope that they will be useful to other people. As a side effect I hope it will help with my motivation.</p>
+
+<p>When I started writing my first Vulkan program and it was overwhelming. I took me a week, 1-2 hours everyday before I got my first triangle on screen. Most of time I spent reading about specific functions in documentation. Amount of knowledge required is just extremely big. So I have my doubts when Stephanie Hurlburt(@sehurlburt) asked about beginner friendly tutorials for Vulkan. My first answer was this is impossible. But after I completed my first triangle and got some experience I decided to write minimal Vulkan sample. Currently code is less then 500 lines. I cheated a bit - instead of rendering triangle I decided to just clear a screen :).</p>
+
+<h2 id="introduction">Introduction</h2>
+
+<p>Lets begin with tools and libraries required for writing simple Vulkan program. I wrote my example using C in <a href="https://www.visualstudio.com/vs/community/">Visual Studio Community edition</a>. To install 3rd party libraries I used <a href="https://github.com/Microsoft/vcpkg">vcpkg</a>, which greatly simplifies this task for Windows. Surprising fact for me was that to install x64 version of library <code>:x64-windows</code> suffix is required. E.g to install both 32 and 64 bit sdl2 library following command <code>vcpkg intsall sdl2 sdl2:x64-windows</code> should be executed. I  also downloaded and installed <a href="https://www.lunarg.com/vulkan-sdk/">Vulkan SDK</a> from LunarG, as at the moment of writing it was not possible to install Vulkan via vcpkg. For platform specific window creation I decided to use <a href="https://www.libsdl.org/download-2.0.php">SDL</a> as I have found very few code example with Vulkan and SDL. Most know <a href="https://vulkan-tutorial.com/">Vulkan tutorial</a> uses GLFW as it simplifies Vulkan initialization. In the end code it should be possible to compile my code on Linux as well as there is nothing Windows specific in it.
+I&rsquo;ll omit steps to setup project and will go directly to coding. Lets start with sample structure first, full code can be found <a href="https://github.com/sopyer/Vulkan/tree/562e653fbbd1f7a83ec050676b744dd082b2ebed">here</a>:</p>
+
+<pre><code class="language-c">int main(int argc, char *argv[])
+{
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
+
+    int run = init_vulkan() &amp;&amp; init_window() &amp;&amp; init_device() &amp;&amp; init_swapchain() &amp;&amp; init_render();
+    while (run)
+    {
+        SDL_Event evt;
+        while (SDL_PollEvent(&amp;evt))
+        {
+            if (evt.type == SDL_QUIT)
+            {
+                run = 0;
+            }
+        }
+
+        draw_frame();
+    }
+
+    fini_render();
+    fini_swapchain();
+    fini_device();
+    fini_window();
+    fini_vulkan();
+
+    SDL_Quit();
+
+    return 0;
+}
+</code></pre>
+
+<p>Program is quite simple. First we initialize everything we need. Then run main loop. And cleanup after ourselves. As we can see from code above before we start using Vulkan for rendering first we need to do some preparations:</p>
+
+<ul>
+<li>create vulkan instance(<code>init_vulkan</code>)</li>
+<li>create window and vulkan surface(<code>init_window</code>)</li>
+<li>create device(<code>init_device</code>)</li>
+<li>create swapchain(<code>init_swapchain</code>)</li>
+<li>create vulkan object required for rendering(<code>init_render</code>)</li>
+</ul>
+
+<p>When we have everything in place we can at last render something(<code>draw_frame</code>), in our case we will just clear swapchain surfaces.</p>
+
+<h2 id="vulkan-instance-creation">Vulkan instance creation</h2>
+
+<p>In order to create instance, I decided to cheat a bit again. Most other tutorials do a lot of stuff for this step: request all available extensions, check what is supported etc. I decided to go another way I just define 2 initialization structures - one for release and one for debug with validation enabled. First I try to initialize debug Vulkan instance, if it is not available then try to create release one. This is done for case if we need to run build with validation enabled on system without SDK. If Vulkan instance was initialized with validation then I setup output callback using <code>vkCreateDebugReportCallbackEXT</code> function.</p>
+
+<pre><code class="language-c">const VkApplicationInfo appInfo = {
+    .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+    .pApplicationName = &quot;Vulkan SDL tutorial&quot;,
+    .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+    .pEngineName = &quot;No Engine&quot;,
+    .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+    .apiVersion = VK_API_VERSION_1_0,
+};
+
+const VkInstanceCreateInfo createInfo = {
+    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+    .pApplicationInfo = &amp;appInfo,
+    .enabledExtensionCount = 2,
+    .ppEnabledExtensionNames = (const char* const[]) { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME },
+};
+
+#ifdef VULKAN_ENABLE_LUNARG_VALIDATION
+const VkInstanceCreateInfo createInfoLunarGValidation = {
+    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+    .pApplicationInfo = &amp;appInfo,
+    .enabledLayerCount = 1,
+    .ppEnabledLayerNames = (const char* const[]) { &quot;VK_LAYER_LUNARG_standard_validation&quot; },
+    .enabledExtensionCount = 3,
+    .ppEnabledExtensionNames = (const char* const[]) { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, VK_EXT_DEBUG_REPORT_EXTENSION_NAME },
+};
+
+PFN_vkCreateDebugReportCallbackEXT vkpfn_CreateDebugReportCallbackEXT = 0;
+PFN_vkDestroyDebugReportCallbackEXT vkpfn_DestroyDebugReportCallbackEXT = 0;
+
+VkDebugReportCallbackEXT debugCallback = VK_NULL_HANDLE;
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanReportFunc(
+    VkDebugReportFlagsEXT flags,
+    VkDebugReportObjectTypeEXT objType,
+    uint64_t obj,
+    size_t location,
+    int32_t code,
+    const char* layerPrefix,
+    const char* msg,
+    void* userData)
+{
+    printf(&quot;VULKAN VALIDATION: %s\n&quot;, msg);
+    return VK_FALSE;
+}
+
+VkDebugReportCallbackCreateInfoEXT debugCallbackCreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
+    .flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT,
+    .pfnCallback = VulkanReportFunc,
+};
+#endif
+
+VkInstance instance = VK_NULL_HANDLE;
+
+int init_vulkan()
+{
+    VkResult result = VK_ERROR_INITIALIZATION_FAILED;
+#ifdef VULKAN_ENABLE_LUNARG_VALIDATION
+    result = vkCreateInstance(&amp;createInfoLunarGValidation, 0, &amp;instance);
+    if (result == VK_SUCCESS)
+    {
+        vkpfn_CreateDebugReportCallbackEXT =
+            (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, &quot;vkCreateDebugReportCallbackEXT&quot;);
+        vkpfn_DestroyDebugReportCallbackEXT =
+            (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, &quot;vkDestroyDebugReportCallbackEXT&quot;);
+        if (vkpfn_CreateDebugReportCallbackEXT &amp;&amp; vkpfn_DestroyDebugReportCallbackEXT)
+        {
+            vkpfn_CreateDebugReportCallbackEXT(instance, &amp;debugCallbackCreateInfo, 0, &amp;debugCallback);
+        }
+    }
+#endif
+    if (result != VK_SUCCESS)
+    {
+        result = vkCreateInstance(&amp;createInfo, 0, &amp;instance);
+    }
+
+    return result == VK_SUCCESS;
+}
+
+void fini_vulkan()
+{
+#ifdef VULKAN_ENABLE_LUNARG_VALIDATION
+    if (vkpfn_DestroyDebugReportCallbackEXT &amp;&amp; debugCallback)
+    {
+        vkpfn_DestroyDebugReportCallbackEXT(instance, debugCallback, 0);
+    }
+#endif
+    vkDestroyInstance(instance, 0);
+}
+</code></pre>
+
+<h2 id="window-and-surface-creation">Window and surface creation</h2>
+
+<p>This is easy part, we create SDL window and Vulkan surface using platform specific code. Also window is not resizable and its dimensions are fixed.</p>
+
+<pre><code class="language-c">SDL_Window* window = 0;
+VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = { VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
+VkSurfaceKHR surface = VK_NULL_HANDLE;
+uint32_t width = 1280;
+uint32_t height = 720;
+
+int init_window()
+{
+    SDL_Window* window = SDL_CreateWindow(
+        &quot;Vulkan Sample&quot;,
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        width, height,
+        0
+    );
+
+    SDL_SysWMinfo info;
+    SDL_VERSION(&amp;info.version);
+    SDL_GetWindowWMInfo(window, &amp;info);
+
+    surfaceCreateInfo.hinstance = GetModuleHandle(0);
+    surfaceCreateInfo.hwnd = info.info.win.window;
+
+    VkResult result = vkCreateWin32SurfaceKHR(instance, &amp;surfaceCreateInfo, NULL, &amp;surface);
+
+    return window != 0 &amp;&amp; result == VK_SUCCESS;
+}
+
+void fini_window()
+{
+    vkDestroySurfaceKHR(instance, surface, 0);
+    SDL_DestroyWindow(window);
+}
+</code></pre>
+
+<h2 id="picking-physical-device">Picking physical device</h2>
+
+<p>In order to create logical device we need first evaluate all physical devices in system and pick one that suits our needs. This is done using <code>vkEnumeratePhysicalDevices</code> functions, which returns handles for physical devices. If is called with argument <code>pPhysicalDevices</code> set to <code>NULL</code> then it returns number of available devices in system. In order to avoid dynamic allocations and simplify code I decide to limit number of devices we check to <code>MAX_DEVICE_COUNT</code>. Very rarely user will have more then that probably most common count will be 2 devices: 1 integrated and 1 discrete GPU. My notebook report only 1 discrete GPU.
+After device handles are retrieved then we need to find device that suits our needs. Also we need to check which queue families are present on device. We later will use queue family index for logical device creation. In my case I just looked for a device with graphics queue which supports present as well. Please note that present queue and graphics queue can be different, but at the moment I just ignore this fact. In order for program to work graphics queue <strong>must</strong> support present.
+Better approach to device selection will be to define profiles in a way similar to DirectX 11 and select device which matches highest profile. We can also always prefer discrete GPU over integrated one. But I think it will be always better if game expose supported GPU list in
+ menu and allow gamer to choose preferred one. As vendor id and device id are exposed we can always initialize previously selected GPU or try to search for new default if something goes wrong.
+Please note I limited queue count to <code>MAX_QUEUE_COUNT</code> which is 4. I suspect that currently there can be no more then 4 queue types: transfer, graphics, compute, graphics+compute. Also in <a href="http://vulkan.gpuinfo.org/">Vulkan hardware database</a> I saw at most 3 different queue families. Judging from unique flags in <code>VkQueueFlagBits</code> enumeration there can be no more then 16 unique queue families. But actual count will be less as graphics and/or compute queues always support transfer queue capabilities. Also I suspect there are not or will not be queue families differentiated by sparsity bit within same gpu. Another fact we should pay attention to is: queue family count is different from total queue count. It is possible to have multiple queues of the same family. This is probably is obvious but better to mention it explicitly.</p>
+
+<pre><code class="language-c">int init_device()
+{ 
+    uint32_t physicalDeviceCount;
+    VkPhysicalDevice deviceHandles[MAX_DEVICE_COUNT];
+    VkQueueFamilyProperties queueFamilyProperties[MAX_QUEUE_COUNT];
+
+    vkEnumeratePhysicalDevices(instance, &amp;physicalDeviceCount, 0);
+    physicalDeviceCount = physicalDeviceCount &gt; MAX_DEVICE_COUNT ? MAX_DEVICE_COUNT : physicalDeviceCount;
+    vkEnumeratePhysicalDevices(instance, &amp;physicalDeviceCount, deviceHandles);
+
+    for (uint32_t i = 0; i &lt; physicalDeviceCount; ++i)
+    {
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(deviceHandles[i], &amp;queueFamilyCount, NULL);
+        queueFamilyCount = queueFamilyCount &gt; MAX_QUEUE_COUNT ? MAX_QUEUE_COUNT : queueFamilyCount;
+        vkGetPhysicalDeviceQueueFamilyProperties(deviceHandles[i], &amp;queueFamilyCount, queueFamilyProperties);
+
+        for (uint32_t j = 0; j &lt; queueFamilyCount; ++j) {
+
+            VkBool32 supportsPresent = VK_FALSE;
+            vkGetPhysicalDeviceSurfaceSupportKHR(deviceHandles[i], j, surface, &amp;supportsPresent);
+
+            if (supportsPresent &amp;&amp; (queueFamilyProperties[j].queueFlags &amp; VK_QUEUE_GRAPHICS_BIT))
+            {
+                queueFamilyIndex = j;
+                physicalDevice = deviceHandles[i];
+                break;
+            }
+        }
+
+        if (physicalDevice)
+        {
+            break;
+        }
+    }
+	
+	...
+}
+</code></pre>
+
+<h2 id="logical-device-creation">Logical device creation</h2>
+
+<p>Logical device creation is trivial part, just use found physical device handle and queue index for logical device creation. Then get all requested queues from device, which we will later use for command submissions. Please note that we require <code>VK_KHR_SWAPCHAIN</code> extension to be supported without checking if this is a case. This simplifies life quite a bit.</p>
+
+<pre><code class="language-c">VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+uint32_t queueFamilyIndex;
+VkQueue queue;
+VkDevice device = VK_NULL_HANDLE;
+
+VkDeviceCreateInfo deviceCreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+    .queueCreateInfoCount = 1,
+    .pQueueCreateInfos = 0,
+    .enabledLayerCount = 0,
+    .ppEnabledLayerNames = 0,
+    .enabledExtensionCount = 1,
+    .ppEnabledExtensionNames = (const char* const[]) { VK_KHR_SWAPCHAIN_EXTENSION_NAME },
+    .pEnabledFeatures = 0,
+};
+
+int init_device()
+{
+	...
+
+    deviceCreateInfo.pQueueCreateInfos = (VkDeviceQueueCreateInfo[]) {
+        {
+            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .queueFamilyIndex = queueFamilyIndex,
+            .queueCount = 1,
+            .pQueuePriorities = (const float[]) { 1.0f }
+        }
+    };
+    VkResult result = vkCreateDevice(physicalDevice, &amp;deviceCreateInfo, NULL, &amp;device);
+
+    vkGetDeviceQueue(device, queueFamilyIndex, 0, &amp;queue);
+
+    return result == VK_SUCCESS;
+}
+
+void fini_device()
+{
+    vkDestroyDevice(device, 0);
+}
+</code></pre>
+
+<h2 id="swapchain-creation">Swapchain creation</h2>
+
+<p>Swapchain creation in my example is also a bit simplified. In order to simplify implementation first available format. If format is <code>VK_FORMAT_UNDEFINED</code>, then we can use any supported format. I use <code>VK_FORMAT_B8G8R8A8_UNORM</code> as default.</p>
+
+<pre><code class="language-c">    //Use first available format
+    uint32_t formatCount = 1;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &amp;formatCount, 0); // suppress validation layer
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &amp;formatCount, &amp;surfaceFormat);
+    surfaceFormat.format = surfaceFormat.format == VK_FORMAT_UNDEFINED ? VK_FORMAT_B8G8R8A8_UNORM : surfaceFormat.format;
+</code></pre>
+
+<p>Next step is to select presentation mode. Mode <code>VK_PRESENT_MODE_FIFO_KHR</code> is always supported, I use it as double buffering. But I decided to support <code>VK_PRESENT_MODE_MAILBOX_KHR</code>, which is equivalent to triple buffering. Both modes use vertical synchronization. Another moment to note: specification now support 6 presentation modes at most, so I query no more then <code>MAX_PRESENT_MODE_COUNT</code> at most in order to avoid dynamic allocations. If you want to learn more details about presentation modes <a href="https://software.intel.com/en-us/articles/api-without-secrets-introduction-to-vulkan-part-2#_Toc445674479">Intel Vulkan swapchain tutorial</a> has excellent visualizations.</p>
+
+<pre><code class="language-c">    uint32_t presentModeCount = 0;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &amp;presentModeCount, NULL);
+    VkPresentModeKHR presentModes[MAX_PRESENT_MODE_COUNT];
+    presentModeCount = presentModeCount &gt; MAX_PRESENT_MODE_COUNT ? MAX_PRESENT_MODE_COUNT : presentModeCount;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &amp;presentModeCount, presentModes);    
+
+	VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;   // always supported.
+    for (uint32_t i = 0; i &lt; presentModeCount; ++i)
+    {
+        if (presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
+        {
+            presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+            break;
+        }
+    }
+    swapchainImageCount = presentMode == VK_PRESENT_MODE_MAILBOX_KHR ? PRESENT_MODE_MAILBOX_IMAGE_COUNT : PRESENT_MODE_DEFAULT_IMAGE_COUNT;
+</code></pre>
+
+<p>In order to create swapchain one more step si required to define swapchain image dimensions. Surface capabilities for device can be queried with <code>vkGetPhysicalDeviceSurfaceCapabilitiesKHR</code> function call. Later its information will be used in swapchain creation. Compositing manager of OS in theory can support different resolutions then original window size. This is communicated via assigning <code>UINT32_MAX</code> to  <code>currentExtent.width</code> and <code>currentExtent.height</code> fields of <code>VkSurfaceCapabilitiesKHR</code> structure. In this case window dimensions are clamped to minimum and maximum supported dimensions of swapchain.</p>
+
+<pre><code class="language-c">    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &amp;surfaceCapabilities);
+
+    swapchainExtent = surfaceCapabilities.currentExtent;
+    if (swapchainExtent.width == UINT32_MAX)
+    {
+        swapchainExtent.width = clamp_u32(width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+        swapchainExtent.height = clamp_u32(height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+    }
+</code></pre>
+
+<p>Final step is swapchain creation. Two thing are of interest here: fields <code>imageUsage</code> and <code>imageSharingMode</code>. Please note that only <code>VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT</code> is supported by default for swapchain images. But <code>VK_IMAGE_USAGE_TRANSFER_DST_BIT</code> is required for clearing image.  Also we use <code>VK_SHARING_MODE_EXCLUSIVE</code> this means that our images can not be used concurrently by 2 queues at the same time and application is responsible for ownership transfer between queues. As there is only 1 queue then there is no reason to use swapchain images in different queues.
+Rest of code is pretty straightforward:</p>
+
+<pre><code class="language-c">VkSwapchainKHR swapchain;
+uint32_t swapchainImageCount;
+VkImage swapchainImages[MAX_SWAPCHAIN_IMAGES];
+VkExtent2D swapchainExtent;
+VkSurfaceFormatKHR surfaceFormat;
+
+int init_swapchain()
+{
+	...
+
+    VkSwapchainCreateInfoKHR swapChainCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = surface,
+        .minImageCount = swapchainImageCount,
+        .imageFormat = surfaceFormat.format,
+        .imageColorSpace = surfaceFormat.colorSpace,
+        .imageExtent = swapchainExtent,
+        .imageArrayLayers = 1, // 2 for stereo
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .preTransform = surfaceCapabilities.currentTransform,
+        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode = presentMode,
+        .clipped = VK_TRUE,
+    };
+
+    VkResult result = vkCreateSwapchainKHR(device, &amp;swapChainCreateInfo, 0, &amp;swapchain);
+    if (result != VK_SUCCESS)
+    {
+        return 0;
+    }
+
+    vkGetSwapchainImagesKHR(device, swapchain, &amp;swapchainImageCount, NULL);
+    vkGetSwapchainImagesKHR(device, swapchain, &amp;swapchainImageCount, swapchainImages);
+
+    return 1;
+}
+
+void fini_swapchain()
+{
+    vkDestroySwapchainKHR(device, swapchain, 0);
+}
+</code></pre>
+
+<h2 id="simple-rendering-clear-backbuffer">Simple rendering: clear backbuffer</h2>
+
+<p>Last but not least is rendering code. Rendering in Vulkan is done recording commands to command buffers and submitting command buffers to device queues.
+This is simple part. Much more complex part is synchronization between different concurrent part of graphics pipeline. Some basic tutorials take easy route and record static command buffers for each swapchain image. But games usually have dynamic content and command buffers are recorder every frame. And we need to synchronize recording of those buffers. Also we need to synchronize presentation engine and GPU rendering. There is very elegant and simple idea best described in <a href="http://asawicki.info/news_1647_vulkan_bits_and_pieces_synchronization_in_a_frame.html">Adam Sawicki blog post</a>,
+ which allows achieve both. I developed similar technique for uploading dynamic, and used it in my other projects.
+Idea is simple: we allow at most N frames it flight and wait for oldest frame before rendering new one. So we reduce our synchronization problem to frame synchronization problem. As long as every frame uses its own set of resources we can rely on Vulkan implicit synchronization guaranties for those resources. We still need to synchronize graphics pipeline for resource usage within frame but that is a different story.
+Here is rendering code:</p>
+
+<pre><code class="language-c">uint32_t frameIndex = 0;
+VkCommandPool commandPool;
+VkCommandBuffer commandBuffers[FRAME_COUNT];
+VkFence frameFences[FRAME_COUNT]; // Create with VK_FENCE_CREATE_SIGNALED_BIT.
+VkSemaphore imageAvailableSemaphores[FRAME_COUNT];
+VkSemaphore renderFinishedSemaphores[FRAME_COUNT];
+
+int init_render()
+{
+    VkCommandPoolCreateInfo commandPoolCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = queueFamilyIndex,
+    };
+
+    vkCreateCommandPool(device, &amp;commandPoolCreateInfo, 0, &amp;commandPool);
+
+    VkCommandBufferAllocateInfo commandBufferAllocInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = commandPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = FRAME_COUNT,
+    };
+
+    vkAllocateCommandBuffers(device, &amp;commandBufferAllocInfo, commandBuffers);
+
+    VkSemaphoreCreateInfo semaphoreCreateInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+
+    vkCreateSemaphore(device, &amp;semaphoreCreateInfo, 0, &amp;imageAvailableSemaphores[0]);
+    vkCreateSemaphore(device, &amp;semaphoreCreateInfo, 0, &amp;imageAvailableSemaphores[1]);
+    vkCreateSemaphore(device, &amp;semaphoreCreateInfo, 0, &amp;renderFinishedSemaphores[0]);
+    vkCreateSemaphore(device, &amp;semaphoreCreateInfo, 0, &amp;renderFinishedSemaphores[1]);
+
+    VkFenceCreateInfo fenceCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT
+    };
+
+    vkCreateFence(device, &amp;fenceCreateInfo, 0, &amp;frameFences[0]);
+    vkCreateFence(device, &amp;fenceCreateInfo, 0, &amp;frameFences[1]);
+
+    return 1;
+}
+
+void fini_render()
+{
+    vkDeviceWaitIdle(device);
+    vkDestroyFence(device, frameFences[0], 0);
+    vkDestroyFence(device, frameFences[1], 0);
+    vkDestroySemaphore(device, renderFinishedSemaphores[0], 0);
+    vkDestroySemaphore(device, renderFinishedSemaphores[1], 0);
+    vkDestroySemaphore(device, imageAvailableSemaphores[0], 0);
+    vkDestroySemaphore(device, imageAvailableSemaphores[1], 0);
+    vkDestroyCommandPool(device, commandPool, 0);
+}
+
+void draw_frame()
+{
+    uint32_t index = (frameIndex++) % FRAME_COUNT;
+    vkWaitForFences(device, 1, &amp;frameFences[index], VK_TRUE, UINT64_MAX);
+    vkResetFences(device, 1, &amp;frameFences[index]);
+
+    uint32_t imageIndex;
+    vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, imageAvailableSemaphores[index], VK_NULL_HANDLE, &amp;imageIndex);
+
+    VkCommandBufferBeginInfo beginInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    };
+    vkBeginCommandBuffer(commandBuffers[index], &amp;beginInfo);
+
+	...
+
+    vkEndCommandBuffer(commandBuffers[index]);
+
+    VkSubmitInfo submitInfo = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &amp;imageAvailableSemaphores[index],
+        .pWaitDstStageMask = (VkPipelineStageFlags[]) { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT },
+        .commandBufferCount = 1,
+        .pCommandBuffers = &amp;commandBuffers[index],
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &amp;renderFinishedSemaphores[index],
+    };
+    vkQueueSubmit(queue, 1, &amp;submitInfo, frameFences[index]);
+
+    VkPresentInfoKHR presentInfo = {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &amp;renderFinishedSemaphores[index],
+        .swapchainCount = 1,
+        .pSwapchains = &amp;swapchain,
+        .pImageIndices = &amp;imageIndex,
+    };
+    vkQueuePresentKHR(queue, &amp;presentInfo);
+}
+</code></pre>
+
+<p>Please note <code>vkDeviceWaitIdle</code> in <code>fini_render</code>. This is very simple synchronization mechanism. It wait for device to complete all work and then resources can be accessed without race conditions. This function simplifies global resource changes like creation or destruction quite a lot.</p>
+
+<p>Rendering code is just 3 calls. But to understand it is required to understand barriers. Barriers can be used in different scenarios. One of usages is to change memory layout of graphics resources. One another usage is transfer of ownership between queues. So code can be extended to support different present queue. But I decided to simplify it and just to mention this possibility. What code does it basically changes underlying memory layout first to <code>VK_ACCESS_TRANSFER_WRITE_BIT</code>, which is required for clear operation, and later to <code>VK_IMAGE_LAYOUT_PRESENT_SRC_KHR</code>, which is required for present. In Vulkan every resource access operation requires specific layout and it is up to programmer to change those layouts, before operation is performed. More detailed explanation can be found in <a href="https://www.khronos.org/registry/vulkan/">Vulkan specification</a>, <a href="http://gpuopen.com/vulkan-barriers-explained/">GPUOpen post</a> and <a href="https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples">Khronos Vulkan barrier examples</a>.
+Code for clearing:</p>
+
+<pre><code class="language-c">    VkImageSubresourceRange subResourceRange = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .baseMipLevel = 0,
+        .levelCount = VK_REMAINING_MIP_LEVELS,
+        .baseArrayLayer = 0,
+        .layerCount = VK_REMAINING_ARRAY_LAYERS,
+    };
+
+    // Change layout of image to be optimal for clearing
+    vkCmdPipelineBarrier(commandBuffers[index],
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, NULL, 0, NULL, 1,
+        &amp;(VkImageMemoryBarrier) {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .srcQueueFamilyIndex = queueFamilyIndex,
+            .dstQueueFamilyIndex = queueFamilyIndex,
+            .image = swapchainImages[imageIndex],
+            .subresourceRange = subResourceRange,
+    }
+    );
+    vkCmdClearColorImage(commandBuffers[index],
+        swapchainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        &amp;(VkClearColorValue){ {1.0f, 0, 0, 1.0f} }, 1, &amp;subResourceRange
+    );
+    // Change layout of image to be optimal for presenting
+    vkCmdPipelineBarrier(commandBuffers[index],
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        0, 0, NULL, 0, NULL, 1,
+        &amp;(VkImageMemoryBarrier){
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .srcQueueFamilyIndex = queueFamilyIndex,
+            .dstQueueFamilyIndex = queueFamilyIndex,
+            .image = swapchainImages[imageIndex],
+            .subresourceRange = subResourceRange,
+    }
+    );
+</code></pre>
+
+<h3 id="links">Links</h3>
+
+<ol>
+<li>Blog post code. <a href="https://github.com/sopyer/Vulkan/tree/562e653fbbd1f7a83ec050676b744dd082b2ebed">https://github.com/sopyer/Vulkan/tree/562e653fbbd1f7a83ec050676b744dd082b2ebed</a></li>
+<li>Khronos Vulkan Registry. <a href="https://www.khronos.org/registry/vulkan/">https://www.khronos.org/registry/vulkan/</a></li>
+<li>Vulkan Tutorial. <a href="https://vulkan-tutorial.com/">https://vulkan-tutorial.com/</a></li>
+<li>Vulkan barriers explained. <a href="http://gpuopen.com/vulkan-barriers-explained/">http://gpuopen.com/vulkan-barriers-explained/</a></li>
+<li>Vulkan Synchronization Examples. <a href="https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples">https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples</a></li>
+<li>API without Secrets: Introduction to Vulkan. Part 2: Swap Chain#Selecting Presentation Mode. <a href="https://software.intel.com/en-us/articles/api-without-secrets-introduction-to-vulkan-part-2#_Toc445674479">https://software.intel.com/en-us/articles/api-without-secrets-introduction-to-vulkan-part-2#_Toc445674479</a></li>
+<li>Vulkan Bits and Pieces: Synchronization in a Frame. <a href="http://asawicki.info/news_1647_vulkan_bits_and_pieces_synchronization_in_a_frame.html">http://asawicki.info/news_1647_vulkan_bits_and_pieces_synchronization_in_a_frame.html</a></li>
+<li>VC++ Packaging Tool. <a href="https://github.com/Microsoft/vcpkg">https://github.com/Microsoft/vcpkg</a></li>
+<li>SDL2. <a href="https://www.libsdl.org/download-2.0.php">https://www.libsdl.org/download-2.0.php</a></li>
+<li>LunarG Vulkan SDK. <a href="https://www.lunarg.com/vulkan-sdk/">https://www.lunarg.com/vulkan-sdk/</a></li>
+<li>Vulkan Hardware Database. <a href="http://vulkan.gpuinfo.org/">http://vulkan.gpuinfo.org/</a></li>
+<li>Visual Studio Community edition. <a href="https://www.visualstudio.com/vs/community/">https://www.visualstudio.com/vs/community/</a></li>
+</ol>
+
+
+    
+
+    
+  </section> 
+
+  <footer>
+  <p class="remove-margin-bottom add-padding-right">
+    &copy; 2017 
+    <a href="">Mykhailo Parfeniuk</a>
+  </p>
+
+  <p class="remove-margin-bottom add-padding-right"><small>
+    <a href="https://github.com/eueung/hugo-sp-minimal">Hugo SP-Minimal</a> Theme | 
+    Based on <a href="https://github.com/orderedlist/minimal">Minimal</a>
+  </small></p>    
+</footer>
+
+
+  </div><script src="js/scale.fix.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.3/highlight.min.js"></script>
+
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+</body></html>
+
