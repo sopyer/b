@@ -1,0 +1,29 @@
+baseurl         = "sopyer.github.io"
+theme           = "sp-minimal"
+languageCode    = "en-us"
+title           = "Mykhailo's blog"
+disqusShortname = "sopyer"
+paginate        = 5
+publishDir      = "docs"
+
+[params]
+  title       = "Mykhailo's blog"
+  subtitle    = "Blog about graphics, programming, optimizations"
+  copyright   = "Copyright (c) 2017-..."
+  authorImage = "logo.png"
+
+  github   = "sopyer"
+  twitter  = "sopyer"
+  linkedin = "mykhailo-parfeniuk-833aa57"
+
+  #"single" or "multi"
+  renderType = "multi"
+  #"simple" or "original"
+  themeStyle = "simple"
+
+  googleAnalytics = ""
+
+  name = "Mykhailo Parfeniuk"
+  description = ""
+  pageNotFoundTitle = "404 - Page not found"
+
