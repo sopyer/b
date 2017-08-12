@@ -3,17 +3,17 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
-    <loc>sopyer.github.io/categories/</loc>
+    <loc>sopyer.github.io/Blog/categories/</loc>
     <priority>0</priority>
   </url>
   
   <url>
-    <loc>sopyer.github.io/</loc>
+    <loc>sopyer.github.io/Blog/</loc>
     <priority>0</priority>
   </url>
   
   <url>
-    <loc>sopyer.github.io/tags/</loc>
+    <loc>sopyer.github.io/Blog/tags/</loc>
     <priority>0</priority>
   </url>
   
