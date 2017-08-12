@@ -2,22 +2,22 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Mykhailo&#39;s blog</title>
-    <link>/</link>
+    <link>https://sopyer.github.io/Blog/</link>
     <description>Recent content on Mykhailo&#39;s blog</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Copyright (c) 2017-...</copyright>
     <lastBuildDate>Sat, 12 Aug 2017 12:00:00 +0300</lastBuildDate>
     
-	<atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="https://sopyer.github.io/Blog/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>Minimal Vulkan Sample: Clearing of Backbuffer</title>
-      <link>/post/minimal-vulkan-sample/</link>
+      <link>https://sopyer.github.io/Blog/post/minimal-vulkan-sample/</link>
       <pubDate>Sat, 12 Aug 2017 12:00:00 +0300</pubDate>
       
-      <guid>/post/minimal-vulkan-sample/</guid>
+      <guid>https://sopyer.github.io/Blog/post/minimal-vulkan-sample/</guid>
       <description>For a long time I wanted to start learning new low-level API like DirectX and Vulkan. And I procrastinated, as my current job is barely related to rendering and there is little interest in high performance code and high performance rendering specifically. Recently I decided instead of just writing code myself to document my learning exercises in hope that they will be useful to other people. As a side effect I hope it will help with my motivation.</description>
     </item>
     
