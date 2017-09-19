@@ -3,8 +3,6 @@ title: "Vulkan Shader Sample"
 date: 2017-09-19T20:57:38+03:00
 ---
 
-# Vulkan Shader Sample
-
 In previous blog post I presented simple Vulkan program, which was mostly initialization/deinitialization sequences. I replaced rendering with simple clear. In this blog post I'll explain how to do actual rendering. I thought that simple triangle will be too boring, so instead I decided to illustrate shaders with [primitive raytracing example from ShaderToy](https://www.shadertoy.com/view/Xds3zN). 
 
 Also first I want to list few interesting Vulkan articles, which I encountered since last time:
