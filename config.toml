@@ -1,4 +1,4 @@
-baseurl         = "https://sopyer.github.io/Blog/"
+baseurl         = "https://sopyer.github.io/b/"
 theme           = "sp-minimal"
 languageCode    = "en-us"
 title           = "Mykhailo's blog"

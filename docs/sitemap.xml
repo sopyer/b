@@ -3,29 +3,34 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
-    <loc>https://sopyer.github.io/Blog/post/minimal-vulkan-sample/</loc>
+    <loc>https://sopyer.github.io/b/post/vulkan-shader-sample/</loc>
+    <lastmod>2017-09-19T20:57:38+03:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://sopyer.github.io/b/post/minimal-vulkan-sample/</loc>
     <lastmod>2017-08-12T12:00:00+03:00</lastmod>
   </url>
   
   <url>
-    <loc>https://sopyer.github.io/Blog/categories/</loc>
+    <loc>https://sopyer.github.io/b/categories/</loc>
     <priority>0</priority>
   </url>
   
   <url>
-    <loc>https://sopyer.github.io/Blog/</loc>
-    <lastmod>2017-08-12T12:00:00+03:00</lastmod>
+    <loc>https://sopyer.github.io/b/</loc>
+    <lastmod>2017-09-19T20:57:38+03:00</lastmod>
     <priority>0</priority>
   </url>
   
   <url>
-    <loc>https://sopyer.github.io/Blog/post/</loc>
-    <lastmod>2017-08-12T12:00:00+03:00</lastmod>
+    <loc>https://sopyer.github.io/b/post/</loc>
+    <lastmod>2017-09-19T20:57:38+03:00</lastmod>
     <priority>0</priority>
   </url>
   
   <url>
-    <loc>https://sopyer.github.io/Blog/tags/</loc>
+    <loc>https://sopyer.github.io/b/tags/</loc>
     <priority>0</priority>
   </url>
   

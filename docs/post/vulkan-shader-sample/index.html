@@ -1,0 +1,546 @@
+
+  <!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+
+    <title>Mykhailo&#39;s blog</title>
+    <meta name="author" content="Mykhailo Parfeniuk">
+    <meta name="description" content="">
+    <meta name="generator" content="Hugo 0.25.1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <link rel="shortcut icon" href="https://sopyer.github.io/b/img/favicon.ico">
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="https://sopyer.github.io/b/css/styles.css">
+    <link rel="stylesheet" href="https://sopyer.github.io/b/css/sp-minimal.css">
+    
+      <link rel="stylesheet" href="https://sopyer.github.io/b/css/sp-minimal-simple.css">
+    
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.3/styles/default.min.css">
+</head>
+
+
+  <body><div class="wrapper">
+  <header class="text-center">
+   <img src="https://sopyer.github.io/b/img/logo.png" class="img-circle s200"> 
+
+  
+    <h1 class="border-bottom add-padding-bottom"><a href="https://sopyer.github.io/b/">Mykhailo&rsquo;s blog</a></h1>
+  
+	
+  
+    <h2 class="text-right add-padding-right">Blog about graphics, programming, optimizations</h2>
+  
+
+  
+    <div class="text-right add-padding-right">
+
+      
+
+      
+      <a href="https://github.com/sopyer" target="_blank"><i class="fa fa-github-square fa-2x"></i></a>
+      
+
+      
+      <a href="https://twitter.com/sopyer" target="_blank"><i class="fa fa-twitter-square fa-2x"></i></a>
+      
+
+      
+      <a href="https://www.linkedin.com/in/mykhailo-parfeniuk-833aa57" target="_blank"><i class="fa fa-linkedin-square fa-2x"></i></a>
+      
+
+      <a href="https://sopyer.github.io/b/index.xml" rel="me"><i class="fa fa-rss-square fa-2x"></i></a> 
+
+    </div>
+
+</header>
+
+
+
+
+  <section>
+    <p class="remove-margin-bottom">
+      <time datetime="19 September 2017">19 September 2017</time>
+    </p>
+
+    <h1>Vulkan Shader Sample</h1>
+    
+
+<h1 id="vulkan-shader-sample">Vulkan Shader Sample</h1>
+
+<p>In previous blog post I presented simple Vulkan program, which was mostly initialization/deinitialization sequences. I replaced rendering with simple clear. In this blog post I&rsquo;ll explain how to do actual rendering. I thought that simple triangle will be too boring, so instead I decided to illustrate shaders with <a href="https://www.shadertoy.com/view/Xds3zN">primitive raytracing example from ShaderToy</a>.</p>
+
+<p>Also first I want to list few interesting Vulkan articles, which I encountered since last time:</p>
+
+<ul>
+<li>Quick intro to Vulkan: <a href="https://renderdoc.org/vulkan-in-30-minutes.html">https://renderdoc.org/vulkan-in-30-minutes.html</a></li>
+<li>Vulkan objects diagram explaining their relations: <a href="http://gpuopen.com/understanding-vulkan-objects/">http://gpuopen.com/understanding-vulkan-objects/</a></li>
+<li>GPUOpen blog post about synchronization in Vulkan: <a href="http://gpuopen.com/performance-tweets-series-barriers-fences-synchronization/">http://gpuopen.com/performance-tweets-series-barriers-fences-synchronization/</a></li>
+<li>A single-header library with a simplified interface for Vulkan synchronization <a href="https://github.com/Tobski/simple_vulkan_synchronization">https://github.com/Tobski/simple_vulkan_synchronization</a></li>
+<li>Collection of links about Vulkan: <a href="https://github.com/vinjn/awesome-vulkan">https://github.com/vinjn/awesome-vulkan</a></li>
+<li>Sascha Willems blog post about new Vulkan device simulation layer:  <a href="https://www.saschawillems.de/?p=2485">https://www.saschawillems.de/?p=2485</a></li>
+</ul>
+
+<p>I think they can be useful to those who is making first steps in mastering Vulkan, people like me.</p>
+
+<h2 id="renderpass-and-clear">Renderpass and Clear</h2>
+
+<p>Lets start with simple preparations and learn a new way to clear images. Entire code can be found in <a href="https://github.com/sopyer/Vulkan/commit/2408b81ff479ffd64e1af768c21062c4334e7371">this commit</a>.</p>
+
+<p>In Vulkan in order to issue draw calls, they should be encapsulated  within render passes.  So lets start with creating renderpass and framebuffer objects. Framebuffer object are somewhat similar OpenGL ones - set of rendertargets which can be rendered into and also read as input attachments within different subpasses of renderpass. But renderpass object is a new concept. On GPUOpen blog there is <a href="http://gpuopen.com/vulkan-renderpasses/">introduction to it</a>. I like to think about renderpass as a graph, which encodes data operations on individual rendertargets within framebuffer. In this graph nodes are rendertargets and edges are per pixel read/write operations. These information is then used in driver in order to optimize rendering, especially in <a href="http://c0de517e.blogspot.com/2017/08/tiled-hardware-speculations.html">GPUs with tiled rendering</a>. People have taken this idea even further, exposing entire frame as a graph:</p>
+
+<ul>
+<li><a href="http://themaister.net/blog/2017/08/15/render-graphs-and-vulkan-a-deep-dive/">Render graphs and Vulkan — a deep dive</a></li>
+<li><a href="https://www.slideshare.net/DICEStudio/framegraph-extensible-rendering-architecture-in-frostbite">FrameGraph: Extensible Rendering Architecture in Frostbite</a></li>
+</ul>
+
+<p>Lets move to renderpass creation code:</p>
+
+<pre><code class="language-c">VkRenderPass renderPass;
+
+int createRenderPass()
+{
+    VkRenderPassCreateInfo renderPassCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        .attachmentCount = 1,
+        .pAttachments = &amp;(VkAttachmentDescription) {
+            .format = surfaceFormat.format,
+            .samples = VK_SAMPLE_COUNT_1_BIT,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        },
+        .subpassCount = 1,
+        .pSubpasses = &amp;(VkSubpassDescription) {
+            .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &amp;(VkAttachmentReference) {
+                .attachment = 0,
+                .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            },
+        },
+        .dependencyCount = 1,
+        .pDependencies = &amp;(VkSubpassDependency) {
+            .srcSubpass = VK_SUBPASS_EXTERNAL,
+            .dstSubpass = 0,
+            .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dependencyFlags = 0,
+        },
+    };
+
+    vkCreateRenderPass(device, &amp;renderPassCreateInfo, 0, &amp;renderPass);
+
+    return 1;
+}
+
+void destroyRenderPass()
+{
+    vkDestroyRenderPass(device, renderPass, NULL);
+}
+</code></pre>
+
+<p>In my example frame structure is quite simple - we have only one attachment, which is cleared at start <code>.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR</code> and at the end we is stored to memory <code>.storeOp = VK_ATTACHMENT_STORE_OP_STORE</code> with layout <code>.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR</code>. We also have only one dependency - on completion of pipeline writes to attachment before we start our own writes.</p>
+
+<p>Next we need to create framebuffers, one for every swapchain image:</p>
+
+<pre><code class="language-c">VkImageView swapchainImageViews[MAX_SWAPCHAIN_IMAGES];
+VkFramebuffer framebuffers[MAX_SWAPCHAIN_IMAGES];
+
+int createFramebuffers()
+{
+    for (uint32_t i = 0; i &lt; swapchainImageCount; ++i)
+    {
+        VkImageViewCreateInfo createInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = swapchainImages[i],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = surfaceFormat.format,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+        vkCreateImageView(device, &amp;createInfo, 0, &amp;swapchainImageViews[i]);
+
+        VkFramebufferCreateInfo framebufferCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            .renderPass = renderPass,
+            .attachmentCount = 1,
+            .pAttachments = &amp;swapchainImageViews[i],
+            .width = swapchainExtent.width,
+            .height = swapchainExtent.height,
+            .layers = 1,
+        };
+        vkCreateFramebuffer(device, &amp;framebufferCreateInfo, 0, &amp;framebuffers[i]);
+    }
+
+    return 1;
+}
+
+void destroyFramebuffers()
+{
+    for (uint32_t i = 0; i &lt; swapchainImageCount; ++i)
+    {
+        vkDestroyFramebuffer(device, framebuffers[i], NULL);
+        vkDestroyImageView(device, swapchainImageViews[i], NULL);
+    }
+}
+</code></pre>
+
+<p>When everything is in place we can now clear our rendertarget:</p>
+
+<pre><code class="language-c">    vkCmdBeginRenderPass(commandBuffers[index],
+        &amp;(VkRenderPassBeginInfo) {
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass = renderPass,
+        .framebuffer = framebuffers[imageIndex],
+        .clearValueCount = 1,
+        .pClearValues = &amp;(VkClearValue) { 0.0f, 0.1f, 0.2f, 1.0f },
+        .renderArea.offset = (VkOffset2D) { .x = 0,.y = 0 },
+        .renderArea.extent = swapchainExtent,
+        },
+        VK_SUBPASS_CONTENTS_INLINE
+    );
+    vkCmdEndRenderPass(commandBuffers[index]);
+</code></pre>
+
+<p>Please note images do not require <code>VK_IMAGE_USAGE_TRANSFER_DST_BIT</code> flag with new clear approach.</p>
+
+<h2 id="simple-triangle">Simple Triangle</h2>
+
+<p>Next step is to create Vulkan pipeline object and use it to draw triangle. My example is the same as in <a href="https://vulkan-tutorial.com/">this Vulkan tutorial</a>. Entire code can be viewed in <a href="https://github.com/sopyer/Vulkan/commit/a70d9029ad9b267cc4da7dbbdfa3136215dd38d0">this commit</a>.</p>
+
+<p>Lets start with pipeline creation. And this step requires to fill <code>VkGraphicsPipelineCreateInfo</code>, which provides describes entire pipeline. There are quite a few structures to be filled and objects to be created, and it can be quite tedious and intimidating at times. Few notes about my case. I do not use any vertex inputs so <code>VkPipelineVertexInputStateCreateInfo</code> is empty. Vertices are generated on fly in vertex shader using <code>gl_VertexIndex</code> built-in shader  input variable, so program does not need vertex data. Program does not use any uniforms,  so it is created with empty pipeline layout. Another point is program uses dynamic states in order to avoid pipeline recreation, when viewport or scissor rectangle change.</p>
+
+<p>Here is code:</p>
+
+<pre><code class="language-C">VkShaderModule createShaderModule(const char* shaderFile)
+{
+    VkShaderModule shaderModule = VK_NULL_HANDLE;
+
+    HANDLE hFile = CreateFile(shaderFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) return VK_NULL_HANDLE;
+
+    LARGE_INTEGER size;
+    GetFileSizeEx(hFile, &amp;size);
+
+    HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
+    CloseHandle(hFile);
+    if (!hMapping) return VK_NULL_HANDLE;
+
+    const uint32_t* data = (const uint32_t*)MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
+
+    VkShaderModuleCreateInfo shaderModuleCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = size.LowPart,
+        .pCode = data,
+    };
+    vkCreateShaderModule(device, &amp;shaderModuleCreateInfo, 0, &amp;shaderModule);
+
+    UnmapViewOfFile(data);
+    CloseHandle(hMapping);
+
+    return shaderModule;
+}
+
+VkPipelineLayout pipelineLayout; 
+VkPipeline pipeline;
+
+int createPipeline()
+{
+    VkShaderModule vertexShader = createShaderModule(&quot;shaders\\shader.vert.spv&quot;);
+    VkShaderModule fragmentShader = createShaderModule(&quot;shaders\\shader.frag.spv&quot;);
+
+    const VkPipelineShaderStageCreateInfo stages[] = {
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .module = vertexShader,
+            .pName = &quot;main&quot;,
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = fragmentShader,
+            .pName = &quot;main&quot;,
+        },
+    };
+    VkPipelineVertexInputStateCreateInfo vertexInputState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+    };
+    VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .primitiveRestartEnable = VK_FALSE,
+    };
+    VkPipelineRasterizationStateCreateInfo rasterizationState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .depthClampEnable = VK_FALSE,
+        .rasterizerDiscardEnable = VK_FALSE,
+        .polygonMode = VK_POLYGON_MODE_FILL,
+        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .frontFace = VK_FRONT_FACE_CLOCKWISE,
+        .depthBiasEnable = VK_FALSE,
+        .depthBiasConstantFactor = 0.0f,
+        .depthBiasClamp = 0.0f,
+        .depthBiasSlopeFactor = 0.0f,
+        .lineWidth = 1.0f,
+    };
+    VkPipelineViewportStateCreateInfo viewportState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .pViewports = 0,
+        .scissorCount = 1,
+        .pScissors = 0,
+    };
+    VkPipelineMultisampleStateCreateInfo multisampleState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+        .sampleShadingEnable = VK_FALSE,
+        .minSampleShading = 1.0f,
+        .pSampleMask = 0,
+        .alphaToCoverageEnable = VK_FALSE,
+        .alphaToOneEnable = VK_FALSE,
+    };
+    VkPipelineColorBlendStateCreateInfo colorBlendState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .logicOpEnable = VK_FALSE,
+        .attachmentCount = 1,
+        .pAttachments = (VkPipelineColorBlendAttachmentState[]) {
+            {
+                .blendEnable = VK_FALSE,
+                .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+                .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+                .colorBlendOp = VK_BLEND_OP_ADD,
+                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+                .alphaBlendOp = VK_BLEND_OP_ADD,
+                .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+            },
+        },
+    };
+    VkPipelineDynamicStateCreateInfo dynamicState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = 2,
+        .pDynamicStates = (VkDynamicState[]) { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR },
+    };
+
+    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+    };
+    vkCreatePipelineLayout(device, &amp;pipelineLayoutCreateInfo, 0, &amp;pipelineLayout);
+
+    VkGraphicsPipelineCreateInfo pipelineCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .stageCount = 2,
+        .pStages = stages, 
+        .pVertexInputState = &amp;vertexInputState,
+        .pInputAssemblyState = &amp;inputAssemblyState,
+        .pViewportState = &amp;viewportState,
+        .pRasterizationState = &amp;rasterizationState,
+        .pMultisampleState = &amp;multisampleState ,
+        .pColorBlendState = &amp;colorBlendState,
+        .pDynamicState = &amp;dynamicState,
+        .layout = pipelineLayout,
+        .renderPass = renderPass,
+    };
+
+    vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &amp;pipelineCreateInfo, 0, &amp;pipeline);
+
+    vkDestroyShaderModule(device, vertexShader, 0);
+    vkDestroyShaderModule(device, fragmentShader, 0);
+
+    return pipeline != 0;
+}
+</code></pre>
+
+<p>Next step is to create and compile shaders. Compilation is done with glslangValidator utility from Vulkan SDK. Also please note shaders should be compiled before first run, otherwise program will crash due to some missing error handling.</p>
+
+<p>Vertex shader:</p>
+
+<pre><code class="language-glsl">#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+out gl_PerVertex
+{
+    vec4 gl_Position;
+};
+
+layout(location = 0) out vec3 fragColor;
+
+vec2 positions[3] = vec2[](
+    vec2(0.0, -0.5),
+    vec2(0.5, 0.5),
+    vec2(-0.5, 0.5)
+);
+
+vec3 colors[3] = vec3[](
+    vec3(1.0, 0.0, 0.0),
+    vec3(0.0, 1.0, 0.0),
+    vec3(0.0, 0.0, 1.0)
+);
+
+void main()
+{
+    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+    fragColor = colors[gl_VertexIndex];
+}
+</code></pre>
+
+<p>Fragment shader:</p>
+
+<pre><code class="language-glsl">#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(location = 0) in vec3 fragColor;
+
+layout(location = 0) out vec4 outColor;
+
+void main()
+{
+    outColor = vec4(fragColor, 1.0);
+}
+</code></pre>
+
+<p>Batch file for shader compilations:</p>
+
+<pre><code class="language-shell">for /r %%f in (*.vert;*.frag) do %VULKAN_SDK%\Bin32\glslangValidator.exe -V %%f -o %%f.spv
+pause
+</code></pre>
+
+<p>And that is all we need to see a triangle.</p>
+
+<h2 id="fullscreen-triangle">Fullscreen Triangle</h2>
+
+<p>Next step in our tutorial is to cover entire screen with single triangle. For this purpose I created 2 new shaders fullscreentri.vert and rtprimitives.frag. Both shaders are the same as in previous example, except for positions array:</p>
+
+<pre><code class="language-glsl">vec2 positions[3] = vec2[](
+    vec2(-1.0,  1.0),
+    vec2(-1.0, -3.0),
+    vec2( 3.0,  1.0)
+);
+</code></pre>
+
+<p>This technique was quite widespread some time ago as it allows to avoid running fragment shader twice along diagonal, which is a case when screen is covered with 2 triangles. Fragment shader is not invoked for regions outside of viewport. In modern engines I believe most or a lot of fullscreen passes are done in compute.</p>
+
+<p>Code can be found in <a href="https://github.com/sopyer/Vulkan/commit/b8ef2a4622c1cb69604afa4406f1ef59d88052d3">this commit</a></p>
+
+<h2 id="compiling-shaders-with-ninja">Compiling Shaders with Ninja</h2>
+
+<p>Batch file has one problem - it always rebuild all shaders. This can become very annoying very quickly. Especially if number of shaders increases. So in order to improve this behavior I <a href="https://github.com/sopyer/Vulkan/commit/82f176afd7c7439ae5d66164c3b6a219edc9447d">replaced batch file with ninja build file</a>. <a href="https://ninja-build.org/">Ninja</a> is a build system written by Google. It is low level and similar to make, but faster.</p>
+
+<p>So here is our simple ninja file:</p>
+
+<pre><code class="language-Ninja">builddir = ../build/temp/shaders
+
+compile_glsl_vertex = cmd /c %VULKAN_SDK%\Bin32\glslangValidator -S vert
+compile_glsl_fragment = cmd /c %VULKAN_SDK%\Bin32\glslangValidator -S frag
+
+rule compile_glsl_vs
+    command = $compile_glsl_vertex -V $in -o $out
+
+rule compile_glsl_fs
+    command = $compile_glsl_fragment -V $in -o $out
+
+build shader.spv-vs: compile_glsl_vs shader.glsl-vs
+build fullscreentri.spv-vs: compile_glsl_vs fullscreentri.glsl-vs
+build shader.spv-fs: compile_glsl_fs shader.glsl-fs
+build rtprimitives.spv-fs: compile_glsl_fs rtprimitives.glsl-fs
+
+</code></pre>
+
+<h2 id="distance-field-raytracing">Distance Field Raytracing</h2>
+
+<p>After all setup work we approached our main goal - to implement raytracing shader. As I said I decided to pick a <a href="https://www.shadertoy.com/view/Xds3zN">shader</a>, written by <a href="http://www.iquilezles.org/index.html">Inigo Quilez</a>, which demonstrates how to raytrace basic primitives and results of some basic operations on them. You can find more details in <a href="http://www.iquilezles.org/www/articles/distfunctions/distfunctions.htm">this article</a>.</p>
+
+<p>Source code for this part of tutorial can be found in <a href="https://github.com/sopyer/Vulkan/commit/952e65c362bcb3f349b9bfe190a01425a62a5e64">this commit</a>. I consider it funny that all changes are limited to shaders and all C++ code stays the same.
+Please note that I hardcoded all parameters like this in order to simplify implementation:</p>
+
+<pre><code>struct FSConst {
+    vec2 resolution;
+    vec2 mouse;
+    float time;
+};
+
+const FSConst u_input = {
+    vec2(1280.0, 720.0),
+    vec2(0.0, 0.0),
+    0.0
+};
+</code></pre>
+
+<h2 id="push-constants">Push Constants</h2>
+
+<p>And now lets talk about cleaning up some technical debt related hardcoded constants in shaders. The simplest way(and also the fastest way) in Vulkan to pass some information to shaders is to use <a href="https://github.com/KhronosGroup/Vulkan-Docs/blob/cd4de492bf04b4a7542a5029ae4b998f117a7ac8/doc/specs/misc/GL_KHR_vulkan_glsl.txt#L130">push constants</a>. Lets see what changes are required.</p>
+
+<p>First we need to modify pipeline layout</p>
+
+<pre><code class="language-C">     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+          .pushConstantRangeCount = 1,
+          .pPushConstantRanges = &amp;(VkPushConstantRange) {
+              .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+              .offset = 0,
+              .size = 20,
+          },
+      };
+      vkCreatePipelineLayout(device, &amp;pipelineLayoutCreateInfo, 0, &amp;pipelineLayout);
+</code></pre>
+
+<p>Next data needs to be uploaded via push constants</p>
+
+<pre><code>vkCmdPushConstants(commandBuffers[index], pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(fragmentConstants), fragmentConstants);
+</code></pre>
+
+<p>And also fragment shader should be modified accordingly</p>
+
+<pre><code class="language-C">layout(push_constant) uniform FSConst {
+    vec2 resolution;
+    vec2 mouse;
+    float time;
+} u_input;
+</code></pre>
+
+<p>In the end we have a dynamic version of raytracing tutorial. I also added some support for time and mouse - similar to original shader on ShaderToy.</p>
+
+<p>Hope you enjoyed this little ride and it was not very boring. Complete code of final version is available in <a href="https://github.com/sopyer/Vulkan/commit/906317d8f0d31aab2e208ba0f28de244b81f76c4">this commit</a></p>
+
+
+    
+
+    
+  </section> 
+
+  <footer>
+  <p class="remove-margin-bottom add-padding-right">
+    &copy; 2017 
+    <a href="https://sopyer.github.io/b/">Mykhailo Parfeniuk</a>
+  </p>
+
+  <p class="remove-margin-bottom add-padding-right"><small>
+    <a href="https://github.com/eueung/hugo-sp-minimal">Hugo SP-Minimal</a> Theme | 
+    Based on <a href="https://github.com/orderedlist/minimal">Minimal</a>
+  </small></p>    
+</footer>
+
+
+  </div><script src="https://sopyer.github.io/b/js/scale.fix.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.3/highlight.min.js"></script>
+
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+</body></html>
+
