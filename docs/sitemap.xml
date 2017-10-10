@@ -3,6 +3,11 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
+    <loc>https://sopyer.github.io/b/post/static-dynamic-geometry-vulkan/</loc>
+    <lastmod>2017-10-10T20:15:12+03:00</lastmod>
+  </url>
+  
+  <url>
     <loc>https://sopyer.github.io/b/post/vulkan-shader-sample/</loc>
     <lastmod>2017-09-19T20:57:38+03:00</lastmod>
   </url>
@@ -19,13 +24,13 @@
   
   <url>
     <loc>https://sopyer.github.io/b/</loc>
-    <lastmod>2017-09-19T20:57:38+03:00</lastmod>
+    <lastmod>2017-10-10T20:15:12+03:00</lastmod>
     <priority>0</priority>
   </url>
   
   <url>
     <loc>https://sopyer.github.io/b/post/</loc>
-    <lastmod>2017-09-19T20:57:38+03:00</lastmod>
+    <lastmod>2017-10-10T20:15:12+03:00</lastmod>
     <priority>0</priority>
   </url>
   

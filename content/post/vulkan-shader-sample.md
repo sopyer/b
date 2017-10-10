@@ -3,9 +3,10 @@ title: "Vulkan Shader Sample"
 date: 2017-09-19T20:57:38+03:00
 ---
 
-In previous blog post I presented simple Vulkan program, which was mostly initialization/deinitialization sequences. I replaced rendering with simple clear. In this blog post I'll explain how to do actual rendering. I thought that simple triangle will be too boring, so instead I decided to illustrate shaders with [primitive raytracing example from ShaderToy](https://www.shadertoy.com/view/Xds3zN). 
+In previous blog post I presented simple Vulkan program, which was mostly initialization/deinitialization sequences. I replaced rendering with simple clear. In this blog post I'll explain how to do actual rendering. I thought that simple triangle will be too boring, so instead I decided to illustrate shaders with [primitive raytracing example from ShaderToy](https://www.shadertoy.com/view/Xds3zN). Here is video which shows what we will achieve: {{< youtube 9X-SRsXeYzQ >}}
 
-Also first I want to list few interesting Vulkan articles, which I encountered since last time:
+
+But first I want to list few interesting Vulkan articles, which I encountered since last time:
 
 - Quick intro to Vulkan: https://renderdoc.org/vulkan-in-30-minutes.html
 - Vulkan objects diagram explaining their relations: http://gpuopen.com/understanding-vulkan-objects/
@@ -453,4 +454,4 @@ layout(push_constant) uniform FSConst {
 
 In the end we have a dynamic version of raytracing tutorial. I also added some support for time and mouse - similar to original shader on ShaderToy.
 
-Hope you enjoyed this little ride and it was not very boring. Complete code of final version is available in [this commit](https://github.com/sopyer/Vulkan/commit/906317d8f0d31aab2e208ba0f28de244b81f76c4)
+Hope you enjoyed this little ride and it was not very boring. Complete code of final version is available in [this commit](https://github.com/sopyer/Vulkan/commit/906317d8f0d31aab2e208ba0f28de244b81f76c4).

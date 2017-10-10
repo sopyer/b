@@ -7,10 +7,19 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Copyright (c) 2017-...</copyright>
-    <lastBuildDate>Tue, 19 Sep 2017 20:57:38 +0300</lastBuildDate>
+    <lastBuildDate>Tue, 10 Oct 2017 20:15:12 +0300</lastBuildDate>
     
 	<atom:link href="https://sopyer.github.io/b/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Dealing with geometry in Vulkan</title>
+      <link>https://sopyer.github.io/b/post/static-dynamic-geometry-vulkan/</link>
+      <pubDate>Tue, 10 Oct 2017 20:15:12 +0300</pubDate>
+      
+      <guid>https://sopyer.github.io/b/post/static-dynamic-geometry-vulkan/</guid>
+      <description>In this blog post I decided to deal with rendering geometry in Vulkan. Depending on usage usually people talk about dynamic and static geometry. Dynamic is geometry which changes every frame or alternatively is uploaded every frame, static - respectively is constant across large number of frames. My goal is to learn how to deal with both in Vulkan. Entire source code can be found in these 2 commits: dynamic geometry and static geometry handling.</description>
+    </item>
     
     <item>
       <title>Vulkan Shader Sample</title>
@@ -18,8 +27,7 @@
       <pubDate>Tue, 19 Sep 2017 20:57:38 +0300</pubDate>
       
       <guid>https://sopyer.github.io/b/post/vulkan-shader-sample/</guid>
-      <description>In previous blog post I presented simple Vulkan program, which was mostly initialization/deinitialization sequences. I replaced rendering with simple clear. In this blog post I&amp;rsquo;ll explain how to do actual rendering. I thought that simple triangle will be too boring, so instead I decided to illustrate shaders with primitive raytracing example from ShaderToy.
-Also first I want to list few interesting Vulkan articles, which I encountered since last time:</description>
+      <description>In previous blog post I presented simple Vulkan program, which was mostly initialization/deinitialization sequences. I replaced rendering with simple clear. In this blog post I&amp;rsquo;ll explain how to do actual rendering. I thought that simple triangle will be too boring, so instead I decided to illustrate shaders with primitive raytracing example from ShaderToy. Here is video which shows what we will achieve:   But first I want to list few interesting Vulkan articles, which I encountered since last time:</description>
     </item>
     
     <item>

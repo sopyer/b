@@ -1,0 +1,484 @@
+
+  <!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+
+    <title>Mykhailo&#39;s blog</title>
+    <meta name="author" content="Mykhailo Parfeniuk">
+    <meta name="description" content="">
+    <meta name="generator" content="Hugo 0.25.1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <link rel="shortcut icon" href="https://sopyer.github.io/b/img/favicon.ico">
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="https://sopyer.github.io/b/css/styles.css">
+    <link rel="stylesheet" href="https://sopyer.github.io/b/css/sp-minimal.css">
+    
+      <link rel="stylesheet" href="https://sopyer.github.io/b/css/sp-minimal-simple.css">
+    
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.3/styles/default.min.css">
+</head>
+
+
+  <body><div class="wrapper">
+  <header class="text-center">
+   <img src="https://sopyer.github.io/b/img/logo.png" class="img-circle s200"> 
+
+  
+    <h1 class="border-bottom add-padding-bottom"><a href="https://sopyer.github.io/b/">Mykhailo&rsquo;s blog</a></h1>
+  
+	
+  
+    <h2 class="text-right add-padding-right">Blog about graphics, programming, optimizations</h2>
+  
+
+  
+    <div class="text-right add-padding-right">
+
+      
+
+      
+      <a href="https://github.com/sopyer" target="_blank"><i class="fa fa-github-square fa-2x"></i></a>
+      
+
+      
+      <a href="https://twitter.com/sopyer" target="_blank"><i class="fa fa-twitter-square fa-2x"></i></a>
+      
+
+      
+      <a href="https://www.linkedin.com/in/mykhailo-parfeniuk-833aa57" target="_blank"><i class="fa fa-linkedin-square fa-2x"></i></a>
+      
+
+      <a href="https://sopyer.github.io/b/index.xml" rel="me"><i class="fa fa-rss-square fa-2x"></i></a> 
+
+    </div>
+
+</header>
+
+
+
+
+  <section>
+    <p class="remove-margin-bottom">
+      <time datetime="10 October 2017">10 October 2017</time>
+    </p>
+
+    <h1>Dealing with geometry in Vulkan</h1>
+    
+
+<p>In this blog post I decided to deal with rendering geometry in Vulkan. Depending on usage usually people talk about dynamic and static geometry. Dynamic is geometry which changes every frame or alternatively is uploaded every frame, static - respectively is constant across large number of frames. My goal is to learn how to deal with both in Vulkan. Entire source code can be found in these 2 commits: <a href="https://github.com/sopyer/Vulkan/commit/563ac8d0bc0551feb9664e214dc32a5e257fbacd">dynamic geometry</a> and static <a href="https://github.com/sopyer/Vulkan/commit/4ef4a09b99c4b1f94996ebab7b2b5d786c7b3352">geometry handling</a>. Base for this 2 commits was commit which added ninja build for shaders.</p>
+
+<p>As manual shaders build can be error prone I decided to automate process. I added separate project to Visual Studio solution which builds shaders. In order for everything to work just ensure that path to ninja executable is available in PATH environment variable.</p>
+
+<h2 id="memory-in-vulkan">Memory in Vulkan</h2>
+
+<p>Vulkan memory is quite complex topic. Vulkan specification explains that entire memory is split into heaps. And within every heap we can allocate memory types with different properties. Great explanation about device memory types can be found <a href="https://gpuopen.com/vulkan-device-memory/">in this article</a> on GPUOpen blog. As memory allocation count can be limited(I heard there can be limit at 4096 allocation for example) the need for suballocations arise. AMD developed <a href="https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator">Vulkan Memory Allocator</a> for this purpose. I have created my own limited adaptation of TLSF allocator for cases of external memory handling: <a href="https://github.com/sopyer/Shadowgrounds/blob/master/storm/storm3dv2/etlsf.h">etlsf.h</a> <a href="https://github.com/sopyer/Shadowgrounds/blob/master/storm/storm3dv2/etlsf.c">etlsf.c</a>. But in this blog post I&rsquo;ll avoid dealing with suballocations for simplicity and clarity.</p>
+
+<p>Now I am going to explain which changes are required to successfully allocate memory and create buffers.</p>
+
+<p>At first lets define some constants</p>
+
+<pre><code class="language-C">enum {
+    Kb = (1 &lt;&lt; 10),
+    Mb = (1 &lt;&lt; 20),
+    ...
+    UPLOAD_REGION_SIZE = 64 * Kb,
+    UPLOAD_BUFFER_SIZE = FRAME_COUNT * UPLOAD_REGION_SIZE,
+};
+
+enum {
+    VULKAN_MEM_DEVICE_READBACK,
+    VULKAN_MEM_DEVICE_UPLOAD,
+    VULKAN_MEM_DEVICE_LOCAL,
+    VULKAN_MEM_COUNT
+};
+</code></pre>
+
+<p>First enumeration defines limits for dynamic buffer size and some helper values.  Second enumeration purpose is to define 3 memory classes suitable for typical operations in graphics applications:</p>
+
+<ul>
+<li>readback from device operations: screenshots, occlusion depth buffer readback, etc</li>
+<li>uploading data to device: dynamic geometry, uploading static geometry, same for textures, uniforms, etc.</li>
+<li>storage for bulk of GPU data: rendertargets, textures, buffers, etc.</li>
+</ul>
+
+<p>Next lets fill bitmasks which has bits set to 1 for each index of suitable memory types. There is bitmask for each memory class.</p>
+
+<pre><code class="language-C">VkPhysicalDeviceMemoryProperties deviceMemProperties;
+uint32_t compatibleMemTypes[VULKAN_MEM_COUNT];
+
+uint32_t vkutFindCompatibleMemoryType(VkPhysicalDeviceMemoryProperties* memProperties, VkMemoryPropertyFlags flags)
+{
+    const uint32_t count = memProperties-&gt;memoryTypeCount;
+    uint32_t compatibleMemoryTypes = 0;
+    for (uint32_t i = 0; i &lt; count; i++)
+    {
+        int isCompatible = ( memProperties-&gt;memoryTypes[i].propertyFlags &amp; flags) == flags;
+        compatibleMemoryTypes |= (isCompatible &lt;&lt; i);
+    }
+
+    return compatibleMemoryTypes;
+}
+
+... 
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &amp;deviceMemProperties);
+    compatibleMemTypes[VULKAN_MEM_DEVICE_READBACK]
+        = vkutFindCompatibleMemoryType(&amp;deviceMemProperties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                                                            | VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+    compatibleMemTypes[VULKAN_MEM_DEVICE_UPLOAD]
+        = vkutFindCompatibleMemoryType(&amp;deviceMemProperties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                                                            | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    compatibleMemTypes[VULKAN_MEM_DEVICE_LOCAL]
+        = vkutFindCompatibleMemoryType(&amp;deviceMemProperties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+</code></pre>
+
+<p>Next is to create actual buffers, upload geometry and render triangle using it.</p>
+
+<h2 id="dealing-with-dynamic-geometry">Dealing with dynamic geometry</h2>
+
+<p>First lets modify shaders in order to read vertex data from buffer.</p>
+
+<p>Vertex shader <strong>vertex_color.glsl-vs</strong>:</p>
+
+<pre><code class="language-GLSL">#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec4 aColor;
+
+out gl_PerVertex
+{
+    vec4 gl_Position;
+};
+layout(location = 0) out vec4 vColor;
+
+void main()
+{
+    gl_Position = vec4(aPos, 0.0, 1.0);
+    vColor = aColor;
+}
+</code></pre>
+
+<p>Fragment shader <strong>vertex_color.glsl-fs</strong>:</p>
+
+<pre><code class="language-GLSL">#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(location = 0) in vec4 vColor;
+
+layout(location = 0) out vec4 rt0;
+
+void main()
+{
+    rt0 = vColor;
+}
+</code></pre>
+
+<p>Next lets add compilation rules to ninja build files:</p>
+
+<pre><code>...
+build vertex_color.spv-vs: compile_glsl_vs vertex_color.glsl-vs
+build vertex_color.spv-fs: compile_glsl_fs vertex_color.glsl-fs
+...
+</code></pre>
+
+<p>Now we need to load modified shaders into our program</p>
+
+<pre><code class="language-C">...
+    VkShaderModule vertexShader = createShaderModule(&quot;shaders\\vertex_color.spv-vs&quot;);
+    VkShaderModule fragmentShader = createShaderModule(&quot;shaders\\vertex_color.spv-fs&quot;);
+...
+</code></pre>
+
+<p>Another step is to modify <code>VkPipelineVertexInputStateCreateInfo</code> in order to reflect changes to shaders</p>
+
+<pre><code class="language-C">     VkPipelineVertexInputStateCreateInfo vertexInputState = {
+         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
++        .vertexBindingDescriptionCount = 1,
++        .pVertexBindingDescriptions = (VkVertexInputBindingDescription[]) {
++            {.binding = 0, .stride = sizeof(VertexP2C), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX}
++        },
++        .vertexAttributeDescriptionCount = 2,
++        .pVertexAttributeDescriptions = (VkVertexInputAttributeDescription[]) {
++            {.location = 0, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT,  .offset = offsetof(VertexP2C, x)},
++            {.location = 1, .binding = 0, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(VertexP2C, rgba)}
++        },
+     };
+</code></pre>
+
+<p>Next is buffer creation. It is separated into 2 parts - buffer creation and allocating memory for that buffer. Please pay attention to selection of memory index. <code>bit_ffs32</code> function returns index of first set bit(counting from least significant bit which is at 0). This way we can automatically and fast find out what memory to use for our allocation. As this buffers is host visible - so we can permanently map it into host memory and use that pointer as destination for memcpy in order to upload our data. Another potentially interesting point is that this buffer can be used not only for vertices but also for indices, uniform data, as storage buffer, as source for memory transfer operations.</p>
+
+<pre><code class="language-C">VkBuffer uploadBuffer;
+VkDeviceMemory uploadBufferMemory;
+void* uploadBufferPtr;
+
+int createUploadBuffer()
+{
+    VkBufferCreateInfo bufferCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = UPLOAD_BUFFER_SIZE,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+                | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = &amp;queueFamilyIndex,
+    };
+    vkCreateBuffer(device, &amp;bufferCreateInfo, NULL, &amp;uploadBuffer);
+    VkMemoryRequirements memoryRequirements;
+    vkGetBufferMemoryRequirements(device, uploadBuffer, &amp;memoryRequirements);
+
+    uint32_t memoryIndex = bit_ffs32(compatibleMemTypes[VULKAN_MEM_DEVICE_UPLOAD] &amp; memoryRequirements.memoryTypeBits);
+    VkMemoryAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = memoryRequirements.size,
+        .memoryTypeIndex = memoryIndex,
+    };
+    vkAllocateMemory(device, &amp;allocInfo, NULL, &amp;uploadBufferMemory);
+    vkBindBufferMemory(device, uploadBuffer, uploadBufferMemory, 0);
+    vkMapMemory(device, uploadBufferMemory, 0, VK_WHOLE_SIZE, 0, &amp;uploadBufferPtr);
+
+    return TRUE;
+}
+
+void destroyUploadBuffer()
+{
+    vkFreeMemory(device, uploadBufferMemory, NULL);
+    vkDestroyBuffer(device, uploadBuffer, NULL);
+}
+</code></pre>
+
+<p>Last missing piece of puzzle is rendering. We copy data, bind buffer and everything else is still the same. Please note how we select target region for our data - based on frame index. In our firs tutorial we introduced frame synchronization mechanism. And in this tutorial we finally can benefit from it. We always know that there is only <code>MAX_FRAME_COUNT-1</code> executing on the device, so we can reuse region of unused frame for data storage.</p>
+
+<pre><code class="language-C">typedef struct tagVertexP2C
+{
+    float x, y;
+    uint32_t rgba;
+} VertexP2C;
+
+...
+
+void draw_frame()
+{
+    uint32_t index = (frameIndex++) % FRAME_COUNT;
+    vkWaitForFences(device, 1, &amp;frameFences[index], VK_TRUE, UINT64_MAX);
+    vkResetFences(device, 1, &amp;frameFences[index]);
+    
+    VkDeviceSize uploadFrameOffset = index * UPLOAD_REGION_SIZE;
+    VertexP2C vertices[] = {
+        {  0.0f, -0.5f, 0xFF0000FF },
+        {  0.5f,  0.5f, 0xFF00FF00 },
+        { -0.5f,  0.5f, 0xFFFF0000 }
+    };
+    memcpy((uint8_t*)uploadBufferPtr + uploadFrameOffset, vertices, sizeof(vertices));
+
+...
+
+    vkCmdBeginRenderPass(commandBuffers[index], ...)
+    
+    vkCmdBindPipeline(commandBuffers[index], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+...
+
+    vkCmdBindVertexBuffers(commandBuffers[index], 0, 1, &amp;uploadBuffer, (VkDeviceSize[]) { 0 });
+    vkCmdDraw(commandBuffers[index], 3, 1, 0, 0);
+
+    vkCmdEndRenderPass(commandBuffers[index]);
+
+...
+
+}
+</code></pre>
+
+<p>And one more thing. In Vulkan we always synchronize memory operations explicitly. And we have host write operation in our code. I had this question in mind: do I need to put pipeline barier to synchronize host writes and vertex input read operations? As it turned out answer is no. Some functions in Vulkan do this implicitly and one of this functions is <code>vkSubmitQueue</code>. But in some cases it is still needed for example if we write memory after <code>vkSubmitQueue</code> and still expect it to be used in submitted frame. As example I can provide this <a href="https://twitter.com/nlguillemot/status/889281958961958912">tweet</a> where such situation arise.</p>
+
+<h2 id="dealing-with-static-geometry">Dealing with static geometry</h2>
+
+<p>Next is rendering static geometry.</p>
+
+<p>First lets define constant for static buffer size</p>
+
+<pre><code class="language-C">enum {
+...
+    STATIC_BUFFER_SIZE = 64 * Kb,
+};
+</code></pre>
+
+<p>Next is static buffer creation - similar to dynamic buffer creation, but this time we use device local memory for buffer. Another difference we replaced <code>VK_BUFFER_USAGE_TRANSFER_SRC_BIT</code> flag with <code>VK_BUFFER_USAGE_TRANSFER_DST_BIT</code> flag, as our buffer will be used as destination for copy operation.</p>
+
+<pre><code class="language-C">...
+
+VkBuffer staticBuffer;
+VkDeviceMemory staticBufferMemory;
+ 
+int createUploadBuffer()
+{
+    VkBufferCreateInfo bufferCreateInfo;
+    VkMemoryAllocateInfo allocInfo;
+    VkMemoryRequirements memoryRequirements;
+    uint32_t memoryIndex;
+
+...
+ 
+    bufferCreateInfo = (VkBufferCreateInfo){
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = STATIC_BUFFER_SIZE,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+        | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+        | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = &amp;queueFamilyIndex,
+    };
+    vkCreateBuffer(device, &amp;bufferCreateInfo, NULL, &amp;staticBuffer);
+    vkGetBufferMemoryRequirements(device, staticBuffer, &amp;memoryRequirements);
+
+    memoryIndex = bit_ffs32(compatibleMemTypes[VULKAN_MEM_DEVICE_LOCAL] &amp; memoryRequirements.memoryTypeBits);
+    allocInfo = (VkMemoryAllocateInfo){
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = memoryRequirements.size,
+        .memoryTypeIndex = memoryIndex,
+    };
+    vkAllocateMemory(device, &amp;allocInfo, NULL, &amp;staticBufferMemory);
+    vkBindBufferMemory(device, staticBuffer, staticBufferMemory, 0);
+
+    return TRUE;
+}
+ 
+void destroyUploadBuffer()
+{
+    vkFreeMemory(device, staticBufferMemory, NULL);
+    vkDestroyBuffer(device, staticBuffer, NULL);
+...
+}
+</code></pre>
+
+<p>Now we can start implementing rendering with new buffer, but first lets modify rendering code a bit:</p>
+
+<pre><code class="language-C">void draw_frame()
+{
+    uint32_t index = frameIndex % FRAME_COUNT;
+    vkWaitForFences(device, 1, &amp;frameFences[index], VK_TRUE, UINT64_MAX);
+    vkResetFences(device, 1, &amp;frameFences[index]);
+ 
+    size_t uploadOffset = index * UPLOAD_REGION_SIZE;
+    size_t uploadLimit = uploadOffset + UPLOAD_REGION_SIZE;
+    uint8_t* uploadPtr = (uint8_t*)uploadBufferPtr;
+
+    uint32_t mask = (SDL_GetTicks() &gt;&gt; 3) &amp; 0x1FF;
+    mask = mask &gt; 0xFF ? 0x1FF - mask : mask;
+    mask = (mask &lt;&lt; 16) | (mask &lt;&lt; 8) | mask;
+    VertexP2C dynamicVertices[] = {
+        { -0.5f, -1.0f, 0xFF0000FF|mask },
+        {  0.0f,  0.0f, 0xFF00FF00|mask },
+        { -1.0f,  0.0f, 0xFFFF0000|mask }
+     };
+    memcpy(uploadPtr+uploadOffset, dynamicVertices, sizeof(dynamicVertices));
+    uploadOffset += sizeof(dynamicVertices);
+    
+    ...
+</code></pre>
+
+<p>First change - our rendering is now dynamic - triangle changes color with time, also we moved it to the left and up. Second we can now track memory usage in dynamic buffer with <code>uploadOffset</code> and <code>uploadLimit</code>.</p>
+
+<p>Next lets upload static geometry to dynamic buffer:</p>
+
+<pre><code class="language-C">    VkBufferCopy bufferCopyInfo;
+    if (frameIndex == 0)
+    {
+        VertexP2C staticVertices[] = {
+            { 0.5f, 0.0f, 0xFF0000FF },
+            { 1.0f, 1.0f, 0xFF00FF00 },
+            { 0.0f, 1.0f, 0xFFFF0000 }
+        };
+        memcpy(uploadPtr + uploadOffset, staticVertices, sizeof(staticVertices));
+        bufferCopyInfo = (VkBufferCopy){
+            .srcOffset = uploadOffset,
+            .dstOffset = 0,
+            .size = sizeof(staticVertices),
+        };
+    }
+
+...
+</code></pre>
+
+<p>We also filled in VkBufferCopy structure in order to use it for copy operation from dynamic buffer to static buffer with <code>vkCmdCopyBuffer</code>. After copy we place memory barrier - to make result of copy visible to graphics pipeline.</p>
+
+<pre><code class="language-C">...
+
+    if (frameIndex == 0)
+    {
+        vkCmdCopyBuffer(commandBuffers[index], uploadBuffer, staticBuffer, 1, &amp;bufferCopyInfo);
+        vkCmdPipelineBarrier(commandBuffers[index],
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 
+            1, &amp;(VkMemoryBarrier){
+                .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+                .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT
+            },
+            0, NULL, 0, NULL
+        );
+    }
+...
+</code></pre>
+
+<p>When everything is ready lets complete our rendering with 2 triangles - one dynamic and one static:</p>
+
+<pre><code class="language-C++">...
+
+    vkCmdBeginRenderPass(commandBuffers[index], ...)
+
+    vkCmdBindPipeline(commandBuffers[index], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+...
+
+    vkCmdBindVertexBuffers(commandBuffers[index], 0, 1, &amp;uploadBuffer, (VkDeviceSize[]) { 0 });
+    vkCmdDraw(commandBuffers[index], 3, 1, 0, 0);
+ 
+    vkCmdBindVertexBuffers(commandBuffers[index], 0, 1, &amp;staticBuffer, (VkDeviceSize[]) { 0 });
+    vkCmdDraw(commandBuffers[index], 3, 1, 0, 0);
+
+    vkCmdEndRenderPass(commandBuffers[index]);
+    
+... 
+
+   ++frameIndex;
+   
+</code></pre>
+
+<p>And that&rsquo;s it. Final result is not as attractive as in previous tutorial but nonetheless is very important 
+<div style="position: relative; padding-bottom: 56.25%; padding-top: 30px; height: 0; overflow: hidden;">
+  <iframe src="//www.youtube.com/embed/suAetbhPq4Y" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" allowfullscreen frameborder="0"></iframe>
+ </div>
+</p>
+
+
+    
+
+    
+  </section> 
+
+  <footer>
+  <p class="remove-margin-bottom add-padding-right">
+    &copy; 2017 
+    <a href="https://sopyer.github.io/b/">Mykhailo Parfeniuk</a>
+  </p>
+
+  <p class="remove-margin-bottom add-padding-right"><small>
+    <a href="https://github.com/eueung/hugo-sp-minimal">Hugo SP-Minimal</a> Theme | 
+    Based on <a href="https://github.com/orderedlist/minimal">Minimal</a>
+  </small></p>    
+</footer>
+
+
+  </div><script src="https://sopyer.github.io/b/js/scale.fix.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.3/highlight.min.js"></script>
+
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+</body></html>
+
