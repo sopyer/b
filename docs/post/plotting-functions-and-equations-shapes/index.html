@@ -1,0 +1,191 @@
+
+  <!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+
+    <title>Mykhailo&#39;s blog</title>
+    <meta name="author" content="Mykhailo Parfeniuk">
+    <meta name="description" content="">
+    <meta name="generator" content="Hugo 0.25.1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <link rel="shortcut icon" href="https://sopyer.github.io/b/img/favicon.ico">
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="https://sopyer.github.io/b/css/styles.css">
+    <link rel="stylesheet" href="https://sopyer.github.io/b/css/sp-minimal.css">
+    
+      <link rel="stylesheet" href="https://sopyer.github.io/b/css/sp-minimal-simple.css">
+    
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.3/styles/default.min.css">
+</head>
+
+
+  <body><div class="wrapper">
+  
+<script type="text/javascript" async
+  src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-MML-AM_CHTML">
+</script>
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  tex2jax: {
+    inlineMath: [['$','$'], ['\\(','\\)']],
+    displayMath: [['$$','$$'], ['\[','\]']],
+    processEscapes: true,
+    processEnvironments: true,
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre','code'],
+    TeX: { equationNumbers: { autoNumber: "AMS" },
+         extensions: ["AMSmath.js", "AMSsymbols.js"] }
+  }
+});
+</script>
+
+
+
+<header class="text-center">
+   <img src="https://sopyer.github.io/b/img/logo.png" class="img-circle s200"> 
+
+  
+    <h1 class="border-bottom add-padding-bottom"><a href="https://sopyer.github.io/b/">Mykhailo&rsquo;s blog</a></h1>
+  
+	
+  
+    <h2 class="text-right add-padding-right">Blog about graphics, programming, optimizations</h2>
+  
+
+  
+    <div class="text-right add-padding-right">
+
+      
+
+      
+      <a href="https://github.com/sopyer" target="_blank"><i class="fa fa-github-square fa-2x"></i></a>
+      
+
+      
+      <a href="https://twitter.com/sopyer" target="_blank"><i class="fa fa-twitter-square fa-2x"></i></a>
+      
+
+      
+      <a href="https://www.linkedin.com/in/mykhailo-parfeniuk-833aa57" target="_blank"><i class="fa fa-linkedin-square fa-2x"></i></a>
+      
+
+      <a href="https://sopyer.github.io/b/index.xml" rel="me"><i class="fa fa-rss-square fa-2x"></i></a> 
+
+    </div>
+
+</header>
+
+
+
+
+  <section>
+    <p class="remove-margin-bottom">
+      <time datetime="14 February 2019">14 February 2019</time>
+    </p>
+
+    <h1>Plotting Functions, Equations, Shapes and Combinations of Them using Shadertoy</h1>
+    
+
+<p>In computer graphics plotting functions is invaluable tool in order to understand any topic. There are a lot of specialized software, but nothing that can visualize 2d, 3d and custom content easily. One of the greatest tools for visualization is Shadertoy. So my goal was to develop tools to be able to generate all kinds of plots.</p>
+
+<p>Plotting shapes is quite straightforward just evaluate $F(x) &gt;= 0$ and you are done. Plotting functions is not so easy. In order to do that coverage is required per pixel. One of simplest coverage measures is just evaluating distance in pixels and using <code>smoothstep</code> function in order to generate gradient over some interval, usually <code>1px</code> or <code>1.5px</code>. Same coverage strategy can be used for shapes as well.</p>
+
+<p>The simplest way to estimate distance I have found in <a href="https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch25.html">Loop, Blinn. Rendering Vector Art on the GPU </a> GPU Gems 3 article. Ideas is to estimate distance as:
+$$sd=\frac{F(x, y)}{||\nabla F(x, y)||}=\frac{F(x, y)}{\sqrt{(\frac{\partial F}{\partial x})^2+(\frac{\partial F}{\partial y})^2}}$$</p>
+
+<p>With this knowledge its simple to render any implicit curve or function. As we deal with 2d screen space function our $sd$ will be always multiple of screen space pixels. So we need just to map it to $[0..1]$ interval. This is can be done for example with <code>1.0-smoothstep(px*(w/2.0-0.5), px*(w/2.0+0.5), abs(sd))</code> where <code>w</code> is approximate width required.</p>
+
+<p>So when we have factors in $[0..1]$ interval we can do even more interesting things like taking intersection or union of shapes. List of possible operations and corresponding formulas is in following table(<a href="https://www.shadertoy.com/view/Xdj3Rh">source</a>):</p>
+
+<h3 id="logic-operations-as-continuous-functions">Logic operations as continuous functions</h3>
+
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Formula</th>
+<th>Note</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>$\neg A$</td>
+<td>$c = 1.0 - a$</td>
+<td>NOT</td>
+</tr>
+
+<tr>
+<td>$A \land B$</td>
+<td>$c = a \cdot b$</td>
+<td>AND</td>
+</tr>
+
+<tr>
+<td>$A \oplus B$</td>
+<td>$c = a + b - 2.0 \cdot a \cdot b$</td>
+<td>XOR</td>
+</tr>
+
+<tr>
+<td>$A \lor B$</td>
+<td>$c = a + b - a \cdot b$</td>
+<td>OR</td>
+</tr>
+
+<tr>
+<td>$\neg(A \land B)$</td>
+<td>$c = 1.0 - a \cdot b$</td>
+<td>NAND</td>
+</tr>
+
+<tr>
+<td>$\neg(A \lor B)$</td>
+<td>$c = 1.0 - a - b + a \cdot b$</td>
+<td>NOR</td>
+</tr>
+
+<tr>
+<td>$\neg(A \oplus B)$</td>
+<td>$c = 1.0 - b - a + 2.0 \cdot a \cdot b$</td>
+<td>XNOR</td>
+</tr>
+</tbody>
+</table>
+
+<p>This technique generates artifacts in some cases, specifically near critical points of $F(x, y)$ function, where $\nabla F(x, y)=0$, or discontinuities like in $\tan(x)$ function.</p>
+
+<p>Here is shadertoy illustration of everything discussed above:</p>
+
+<iframe src="https://www.shadertoy.com/embed/wsSGRz" style="width: 640px; height: 380px;"></iframe>
+
+
+    
+
+    
+  </section> 
+
+  <footer>
+  <p class="remove-margin-bottom add-padding-right">
+    &copy; 2019 
+    <a href="https://sopyer.github.io/b/">Mykhailo Parfeniuk</a>
+  </p>
+
+  <p class="remove-margin-bottom add-padding-right"><small>
+    <a href="https://github.com/eueung/hugo-sp-minimal">Hugo SP-Minimal</a> Theme | 
+    Based on <a href="https://github.com/orderedlist/minimal">Minimal</a>
+  </small></p>    
+</footer>
+
+
+  </div><script src="https://sopyer.github.io/b/js/scale.fix.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.3/highlight.min.js"></script>
+
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+</body></html>
+
