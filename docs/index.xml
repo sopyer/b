@@ -18,7 +18,8 @@
       <pubDate>Thu, 14 Feb 2019 14:00:00 +0200</pubDate>
       
       <guid>https://sopyer.github.io/b/post/plotting-functions-and-equations-shapes/</guid>
-      <description>In computer graphics plotting functions is invaluable tool in order to understand any topic. There are a lot of specialized software, but nothing that can visualize 2d, 3d and custom content easily. One of the greatest tools for visualization is Shadertoy. So my goal was to develop tools to be able to generate all kinds of plots.
+      <description>UPDATE: added automatic differentiation via dual numbers section
+ In computer graphics plotting functions is invaluable tool in order to understand any topic. There are a lot of specialized software, but nothing that can visualize 2d, 3d and custom content easily. One of the greatest tools for visualization is Shadertoy. So my goal was to develop tools to be able to generate all kinds of plots.
 Plotting shapes is quite straightforward just evaluate $F(x) &amp;gt;= 0$ and you are done.</description>
     </item>
     
